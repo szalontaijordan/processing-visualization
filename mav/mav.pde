@@ -14,7 +14,17 @@ DataLoader loader;
 List<Train> trains;
 Set<String> mainLines;
 Map<String, Float> delays;
+List<ChartData> raceChart;
 Map<String, Integer> counts;
+
+List<List<ChartData>> history;
+int showing = 0;
+int selected = 0;
+int pit = -1;
+boolean autoFollow = true;
+
+int playTimer;
+boolean playing = false;
 
 Set<String> water = Set.of(
   "Duna_folyam",
@@ -51,17 +61,36 @@ int trainsY = 0;
 float strechX = 0.23;
 float strechY = 0.17;
 
-int timer;
+int dataTimer;
+
 int intervalSeconds = 2;
+
+int tmpx = 75;
+float ease = 0.05;
+float Y_BASE = 40.0;
+int TOP_TRAINS = 15;
+
+float sliderx;
+float slidery;
+
+boolean showingHu = true;
 
 void draw(){
   background(#ffffff);
-  
-  if (millis() - timer >= intervalSeconds * 1000) {
+  float dataTimeDiff = millis() - dataTimer;
+  if (dataTimeDiff >= intervalSeconds * 1000) {
     thread("requestData");
-    timer = millis();
+    dataTimer = millis();
   }
   
+  if (showingHu) {
+    drawFullHungary();
+  } else {
+    drawRaceChart();
+  }
+}
+
+void drawFullHungary() {
   PShape map = hu.getChild("alapterkep");
 
   drawHungary(map);
@@ -74,6 +103,57 @@ void draw(){
   if (shouldDrawTrains) {
     drawTrains();
   }
+}
+
+void drawRaceChart() {
+  // draw chart
+  // fix delays
+  strokeWeight(1);
+  List<Integer> fixDelays = List.of(0, 15, 30, 60, 90);
+  fixDelays.stream().forEach(d -> {
+    float linex = map(d, 0, getMaxDelay(), 0, 1000) + tmpx;
+    
+    if (linex <= 1050) {
+      stroke(color(128, 128, 128, 128));
+      textAlign(CENTER);
+      text(d.toString(), linex, Y_BASE - 8);
+    
+      line(linex, Y_BASE, linex, (TOP_TRAINS + 1) * Y_BASE + 16);
+    }
+  });
+ 
+  int current = autoFollow ? showing : selected;
+  List<ChartData> chart = history.size() == 0 ? null : history.get(current - 1);
+  if (chart != null) {
+    chart.stream().forEach(data -> data.show(tmpx, ease, getFillForDelay(data.getCurrent())));
+    
+    float playTimeDiff = millis() - playTimer;
+    boolean allSettled = chart.stream().map(data -> data.isSettled()).reduce((acc, data) -> data && acc).orElse(false);
+    if (playing && allSettled && playTimeDiff >= 500) {
+      play();
+      playTimer = millis();
+    }
+    
+  }
+  
+  // draw slider
+  stroke(#000000);
+  strokeWeight(1);
+  float sliderY = (TOP_TRAINS + 1) * Y_BASE + 46;
+  line(tmpx, sliderY - 8, tmpx, sliderY + 8);
+  line(tmpx, sliderY, 1050, sliderY);
+  line(tmpx, sliderY - 8, tmpx, sliderY + 8);
+  line(1050, sliderY - 8, 1050, sliderY + 8);
+  
+  for (int i = 1; i <= showing; i++) {
+    float tickx = map(i, 1, showing, tmpx, 1050);
+    line(tickx, sliderY - 4, tickx, sliderY + 4);
+    if (i == current) {
+      sliderx = tickx;
+      slidery = sliderY;
+    }
+  }
+  circle(sliderx, slidery, 8);
 }
 
 void drawTrains() {
@@ -92,15 +172,14 @@ void drawTrains() {
 
     float x = (train.getLon() - minLon) * scaleW + trainDeltaX;
     float y = h - ((train.getLat() - minLat) * scaleH) + trainDeltaY;
-    // ellipseMode(CENTER);
-    
-    getFillForDelay(train);
-    circle(x, y, 10);
     
     if (dist(x, y, mouseX, mouseY) < 10) {
       fill(#000000);
       drawInfoBox(train);
     }
+    
+    getFillForDelay(train);
+    circle(x, y, 10);
   });
 }
 
@@ -150,25 +229,27 @@ void drawTrainLines(PShape map) {
     });
 }
 
+color getFillForDelay(int lineDelay) {
+  if (lineDelay == 0) {
+    return #b3d7ff;
+  } else if (1 <= lineDelay && lineDelay < 5) {
+    return #ceffcc;
+  } else if (5 <= lineDelay && lineDelay < 15) {
+    return #f5ff38;
+  } else if (15 <= lineDelay && lineDelay < 30) {
+    return #ffbf00;
+  } else if (30 <= lineDelay && lineDelay < 60) {
+    return #ff0000;
+  } else if (60 <= lineDelay && lineDelay < 100) {
+    return #9c0000;
+  }
+  println(lineDelay);
+  return #000000;
+}
+
 void getFillForDelay(Train train) {
   int lineDelay = train.getDelay();
-  
-  if (lineDelay == 0) {
-    fill(#b3d7ff);
-  } else if (1 <= lineDelay && lineDelay < 5) {
-    fill(#ceffcc);
-  } else if (5 <= lineDelay && lineDelay < 15) {
-    fill(#f5ff38);
-  } else if (15 <= lineDelay && lineDelay < 30) {
-    fill(#ffbf00);
-  } else if (30 <= lineDelay && lineDelay < 60) {
-    fill(#ff0000);
-  } else if (60 <= lineDelay && lineDelay < 100) {
-    fill(#9c0000);
-  } else {
-    println(lineDelay);
-    fill(#000000);
-  }
+  fill(getFillForDelay(lineDelay));
 }
 
 Map[] getStats() {
@@ -190,6 +271,7 @@ Map[] getStats() {
   
   delays.entrySet().stream().forEach(me -> {
     delays.put(me.getKey(), me.getValue() / counts.get(me.getKey()));
+    // delays.put(me.getKey(), (float) (Math.random() * 70));
   });
   
   return new Map[]{
@@ -199,6 +281,9 @@ Map[] getStats() {
 }
 
 float getMaxDelay() {
+  if (delays == null) {
+    return 0;
+  }
   return delays.values().stream().reduce((acc, val) -> Math.max(acc, val)).orElse(0.0);
 }
 
@@ -329,10 +414,26 @@ void mouseWheel(MouseEvent event) {
 
 int L = 1000;
 
-boolean shouldDrawTrains = false;
+boolean shouldDrawTrains = true;
 
 void keyPressed() {
   float delta = 0.001;
+  
+  if (key == 'y') {
+    autoFollow = false;
+    selected = Math.max(1, selected - 1);
+  } else if (key == 'x') {
+    autoFollow = false;
+    selected = Math.min(showing, selected + 1);
+  } else if (key == 'c') {
+    autoFollow = true;
+  } else if (key == 'p') {
+    autoFollow = false;
+    playing = true;
+    pit = selected;
+    ease = 0.5;
+    selected = 1;
+  }
 
   if (key == 't') {
     shouldDrawTrains = !shouldDrawTrains;
@@ -357,6 +458,7 @@ void keyPressed() {
   } else if (key == 's') {
     strechY -= delta;
   } else if (key == ' ') {
+    showingHu = !showingHu;
     println(mapX);
     println(mapY);
     println(strechX);
@@ -372,8 +474,20 @@ float minLon;
 float maxLon;
 
 void requestData() {
+  if (history == null) {
+    history = new ArrayList<>();
+  }
   trains = loader.loadTrains();
   Map[] stats = getStats();
+  
+  raceChart = calculateChart(delays, stats[0], TOP_TRAINS);
+  history.add(raceChart);
+  showing++;
+  if (autoFollow) {
+    selected = showing;
+    pit = showing;
+  }
+  
   delays = stats[0];
   counts = stats[1];
   /*minLat = trains.stream().map(train -> train.getLat()).reduce((acc, lat) -> Math.min(acc, lat)).orElse(0.0);
@@ -392,4 +506,58 @@ void requestData() {
   
   mainLines = new HashSet<>();
   trains.stream().forEach(train -> mainLines.add("vv_" + train.getLine()));
+}
+
+List<ChartData> calculateChart(Map<String, Float> prev, Map<String, Float> current, int top) {
+  final float maxDelay = getMaxDelay();
+  
+  List<Map.Entry<String, Float>> empty = new ArrayList(current.size());
+  Collections.fill(empty, null);
+
+  List<Map.Entry<String, Float>> prevSorted = prev == null
+    ? new ArrayList<>(current.entrySet())
+    : new ArrayList<>(prev.entrySet());
+
+  Collections.sort(prevSorted, (a, b) -> b.getValue().compareTo(a.getValue()));
+  
+  List<Map.Entry<String, Float>> currentSorted = new ArrayList<>(current.entrySet());
+  Collections.sort(currentSorted, (a, b) -> b.getValue().compareTo(a.getValue()));
+  
+  List<ChartData> data = new ArrayList<>();
+  
+  for (int i = 0; i < Math.min(current.size(), top); i++) {
+    Map.Entry<String, Float> c = currentSorted.get(i);
+
+    int prevIndex = -1;
+    for (int j = 0; j < top; j++) {
+      if (prevSorted.get(j) != null && prevSorted.get(j).getKey().equals(c.getKey())) {
+        prevIndex = j;
+      }
+    }
+
+    Map.Entry<String, Float> p = prevIndex == -1 ? null : prevSorted.get(prevIndex);
+    
+    String k = c.getKey();
+    float value = p == null ? 0 : p.getValue();
+    float targetValue = c.getValue();
+    int place = p == null ? top : prevIndex;
+    int targetPlace = i;
+    
+    ChartData d = new ChartData(k, value, targetValue, place, targetPlace, maxDelay, Y_BASE);
+    
+    data.add(d);
+  }
+  
+  //  println(data);
+  return data;
+}
+
+void play() {
+  if (selected + 1 < pit) {
+    selected++;
+  } else {
+    playing = false;
+    ease = 0.05;
+    pit = showing;
+  }
 }
