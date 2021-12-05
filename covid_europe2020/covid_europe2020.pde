@@ -34,6 +34,8 @@ void setup() {
   currentScene = Scene.Map;
   // currentScene = Scene.Chart;
   selectedCountries.add("hu");
+  selectedCountries.add("it");
+  selectedCountries.add("sk");
 }
 
 void mouseClicked() {
@@ -282,27 +284,36 @@ void drawChart() {
     .reduce((acc, cases) -> Math.max(acc, cases))
     .orElse(0);
   
-  color from = color(204, 102, 0);
-  color to = color(0, 102, 153);
-  
-  Map<String, Float> colors = new HashMap<>();
+  color[] allColors = new color[]{
+    #62939c,
+    #9e0099,
+    #ff931f,
+    #a32300,
+    #058c00,
+    #0000FF,
+    #001275
+  };
+  Map<String, Integer> colors = new HashMap<>();
   List<String> selectedList = new ArrayList<>(selectedCountries);
   
   for (int i = 0; i < selectedCountries.size(); i++) {
     String cc = selectedList.get(i);
-    float step = (i+1) * 1.0 / selectedCountries.size();
-    colors.put(cc, step);
+    colors.put(cc, i);
   }
   
   chartData.entrySet().stream()
     .forEach((entry) -> {
       // println(entry.getKey());
       // println(Arrays.toString(entry.getValue()));
-      color col = lerpColor(from, to, colors.get(entry.getKey()));
-
-      drawCountry(entry.getValue(), max, col, padding, range);
+      int index = colors.get(entry.getKey());
+      if (index < allColors.length) {
+        color col = allColors[index];
+        drawCountry(entry.getValue(), max, col, padding, range);
+      }
     });
   
+  fill(#000000);
+  stroke(#000000);
   // origo
   textAlign(RIGHT);
   text("0", padding / 2 - 8, 500);
@@ -350,10 +361,13 @@ void drawChart() {
       int y = (i+1)*16+100;
       text(cc, rectX + 20, y);
       
-      color countryColor = lerpColor(from, to, colors.get(selectedList.get(i)));
-      fill(countryColor);
-      stroke(#ffffff);
-      rect(rectX + 24, y - 8, 8, 8);
+      int index = colors.get(selectedList.get(i));
+      if (index < allColors.length) {
+        color countryColor = allColors[index];
+        fill(countryColor);
+        stroke(#ffffff);
+        rect(rectX + 24, y - 8, 8, 8);
+      }
     }
     
     textAlign(LEFT);
