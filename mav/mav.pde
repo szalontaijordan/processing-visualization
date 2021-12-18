@@ -86,11 +86,31 @@ void draw(){
     dataTimer = millis();
   }
   
-  if (showingHu) {
-    drawFullHungary();
+  if (!wireframe) {
+    if (showingHu) {
+      drawFullHungary();
+    } else {
+      drawRaceChart();
+    }
   } else {
-    drawRaceChart();
+    drawLinePointsOnly();
   }
+}
+
+void drawLinePointsOnly() {
+  PShape map = hu.getChild("alapterkep");
+  Arrays.asList(map.getChildren()).stream()
+    .filter(child -> child.getName() != null)
+    .filter(child -> child.getName().startsWith("vv"))
+    // .filter(child -> mainLines.contains(child.getName()))
+    .skip(0)
+    .limit(L)
+    .map(child -> getVerticesOfTrainLine(child))
+    .forEach(line -> {
+      line.stream().forEach(vec -> {
+        point(vec.x, vec.y);
+      });
+    });
 }
 
 void drawFullHungary() {
@@ -564,8 +584,12 @@ void keyPressed() {
     println(mapY);
     println(strechX);
     println(strechY);
+  } else if (key == '*') {
+    wireframe = !wireframe;
   }
 }
+
+boolean wireframe = false;
 
 float deltaLat;
 float deltaLon;
