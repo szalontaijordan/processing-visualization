@@ -250,7 +250,9 @@ void drawHungary(PShape map) {
         child.disableStyle();
         
         if (water.contains(child.getName())) {
-          noStroke();
+          strokeWeight(1);
+          stroke(#0000ff);
+          // noStroke();
         } else if (child.getName().equals("orszaghatar")) {
           strokeWeight(2);
           stroke(#000000);
