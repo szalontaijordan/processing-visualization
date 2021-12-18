@@ -1,4 +1,5 @@
 import java.util.*;
+import java.util.stream.IntStream;
 import java.util.function.UnaryOperator;
 import java.time.LocalDate;
 import java.text.SimpleDateFormat;
@@ -16,6 +17,7 @@ Set<String> mainLines;
 Map<String, Float> delays;
 List<ChartData> raceChart;
 Map<String, Integer> counts;
+Map<Integer, PVector> trainsXY;
 
 List<List<ChartData>> history;
 int showing = 0;
@@ -77,6 +79,7 @@ boolean showingHu = true;
 
 void draw(){
   background(#ffffff);
+  calcTrains();
   float dataTimeDiff = millis() - dataTimer;
   if (dataTimeDiff >= intervalSeconds * 1000) {
     thread("requestData");
@@ -157,13 +160,32 @@ void drawRaceChart() {
 }
 
 void drawTrains() {
+  if (trainsXY == null) {
+    return;
+  }
+  trainsXY.entrySet().stream().forEach(me -> {
+    if (me.getKey() < trains.size()) {
+      Train train = trains.get(me.getKey());
+      PVector vec = me.getValue();
+      
+      stroke(#000000);
+      strokeWeight(1);
+      getFillForDelay(train);
+      circle(vec.x, vec.y, 10);
+    }
+  });
+}
+
+void calcTrains() {
+  trainsXY = new HashMap<>();
   float h = 2059 * (1.0 + strechY) * (0.3 + zoom);
   float w = 3116 * (1.0 + strechX) * (0.3 + zoom);
 
   final float scaleH = h / deltaLat;
   final float scaleW = w / deltaLon;
   
-  trains.stream().forEach(train -> {        
+  for (int i = 0; i < trains.size(); i++) {
+    Train train = trains.get(i); 
     strokeWeight(1);
     stroke(#232323);
 
@@ -178,12 +200,14 @@ void drawTrains() {
       drawInfoBox(train);
     }
     
-    getFillForDelay(train);
-    circle(x, y, 10);
-  });
+    trainsXY.put(i, new PVector(x, y));
+  };
 }
 
 void drawInfoBox(Train train) {
+  if (train == null) {
+    return;
+  }
   fill(color(255, 255, 255, 240));
   strokeWeight(1);
   stroke(#000000);
@@ -191,9 +215,12 @@ void drawInfoBox(Train train) {
   int boxW = 200;
   int boxH = 40;
   
-  rect(mouseX - boxW - 8, mouseY - boxH - 8, boxW, boxH, 16);
-  fill(#000000);
-  text(train.getInfo(), mouseX - boxW, mouseY - boxH + 8);
+  try {
+    rect(mouseX - boxW - 8, mouseY - boxH - 8, boxW, boxH, 16);
+    fill(#000000);
+    text(train.getInfo(), mouseX - boxW, mouseY - boxH + 8);
+  } catch (Exception e) {
+  }
 }
 
 void drawHungary(PShape map) {
@@ -303,62 +330,136 @@ void drawTrainLine(String id, PShape map) {
 float DX = 103.0;
 float DY = 544.0;
 
+List<PVector> getVerticesOfTrainLine(PShape trainLine) {
+  List<PVector> vertices = new ArrayList<>();
+  final int count = trainLine.getVertexCount();
+  
+  for (int i = 1; i < count; i++) {
+    PVector vec = trainLine.getVertex(i);
+
+    TableRow tr = isTranslateNeeded(trainLine);
+    if (tr != null) {
+      float xx = tr.getFloat("x");
+      float yy = tr.getFloat("y");
+      vec.add(new PVector(xx + DX, yy + DY));
+    }
+    vec.add(mapX, mapY);
+    vec.set(vec.x * (1.0 + strechX) * (0.3 + zoom), vec.y * (1.0 + strechY) * (0.3 + zoom));
+    
+    
+    vertices.add(vec);
+  }
+  
+  return vertices;
+}
+
 void drawTrainLine(PShape trainLine) {
   if (trainLine == null) {
     return;
   }
 
-  final int count = trainLine.getVertexCount();
-  final color from = #00ff00;
-  final color to = #ff0000;
-  final float minStroke = 1.0;
-  final float maxStroke = 14;
-  
-  // final String lineName = "vv_" + trainLine.getName().replaceAll("[A-Za-z_]", "");
-  final String lineName = trainLine.getName().toLowerCase();
-  
   strokeJoin(ROUND);
-  for (int i = 1; i < count; i++) {
-    PVector first = trainLine.getVertex(i - 1);
-    PVector last = trainLine.getVertex(i);
+  List<PVector> vertices = getVerticesOfTrainLine(trainLine);
+  
+  for (int i = 1; i < vertices.size(); i++) {
+    PVector first = vertices.get(i - 1);
+    PVector last = vertices.get(i);
     
-    final int I = i;
-    show(() -> {
-      translateIfNeeded(trainLine);
-      
-      int minDelay = 0;
-      float maxDelay = getMaxDelay();
+    float strokeSize = 1.0;
+    float mult = map(getCloseTrains(first, 20).size(), 0, 10, 1, 2);
 
-      // delay
-      Float lineDelay = delays.get(lineName);
-      float colorBase = lineDelay == null || lineDelay == 0
-        ? 0
-        : map(lineDelay, minDelay, maxDelay, 0, 1);
-
-      // trains per line
-      Integer lineCount = counts.get(lineName);  
-      float countBase = lineCount == null || lineCount == 0
-        ? minStroke
-        : map(lineCount, 0, 100, minStroke, maxStroke);
-      
-      float strokeSize = getStrokeSize(I, count, count/16, countBase);
-      color strokeColor = lerpColor(from, to, colorBase);
-
+    if (hasCloseTrain(first, 10) && hasCloseTrain(last, 10)) {
+      strokeWeight(14 * mult);
+      stroke(getLocalDelayColor(first, 10));
+    } else if (hasCloseTrain(first, 20) && hasCloseTrain(last, 20)) {
+      strokeWeight(8 * mult);
+      stroke(getLocalDelayColor(first, 15));
+    } else if (hasCloseTrain(first, 30) && hasCloseTrain(last, 30)) {
+      strokeWeight(4 * mult);
+      stroke(getLocalDelayColor(first, 20));
+    } else {
       strokeWeight(strokeSize);
-      stroke(strokeColor);
-      line(first.x, first.y, last.x, last.y);
-    });
+    }
+    
+    line(first.x, first.y, last.x, last.y);
   }
 
 }
 
-void translateIfNeeded(PShape trainLine) {
+List<Train> getCloseTrains(PVector vec, int d) {
+  List<Train> closeTrains = new ArrayList<>();
+  
+  try {
+    for (int i = 0; i < trains.size(); i++) {
+      if (trainsXY.getOrDefault(i, new PVector(Integer.MAX_VALUE, Integer.MAX_VALUE)).dist(vec) <= d) {
+        closeTrains.add(trains.get(i));
+      }
+    }
+  } catch (Exception e) {
+  }
+
+  return closeTrains;
+}
+
+color getLocalDelayColor(PVector vec) {
+  return getLocalDelayColor(vec, 30);
+}
+
+color getLocalDelayColor(PVector vec, int d) {
+  List<Train> closeTrains = getCloseTrains(vec, d);  
+  final color from = #00ff00;
+  final color to = #ff0000;
+  
+  int minDelay = 0;
+  float maxDelay = getMaxDelay();
+
+  if (closeTrains.size() == 0) {
+    return from;
+  }
+
+  // delay
+  float lineDelay = closeTrains.stream().map(train -> 1.0*train.getDelay()).reduce((acc, t) -> acc + t).orElse(0.0) / closeTrains.size();
+  
+  float maxBound = d == 10
+    ? 1
+    : d == 15
+      ? 0.5
+      : 0.25;
+  float colorBase = lineDelay == 0
+    ? 0
+    : map(lineDelay, minDelay, maxDelay, 0, maxBound);
+ 
+  return lerpColor(from, to, colorBase);
+}
+
+boolean hasCloseTrain(PVector vec, int d) {
+  if (trainsXY == null) {
+    return false;
+  }
+  try {
+    for (Map.Entry<Integer, PVector> me: trainsXY.entrySet()) {
+      if (me.getValue().dist(vec) <= d) {
+        return true;
+      }
+    }
+  } catch (Exception e) {
+  }
+  
+  return false;
+}
+
+TableRow isTranslateNeeded(PShape trainLine) {
   TableRow tr = null;
   for (TableRow row : translates.rows()) {
     if (row.getString("id").equals(trainLine.getName())) {
       tr = row;
     }
   }
+  return tr;
+}
+
+void translateIfNeeded(PShape trainLine) {
+  TableRow tr = isTranslateNeeded(trainLine);
   if (tr != null) {
     float xx = tr.getFloat("x");
     float yy = tr.getFloat("y");
@@ -478,6 +579,7 @@ void requestData() {
     history = new ArrayList<>();
   }
   trains = loader.loadTrains();
+  calcTrains();
   Map[] stats = getStats();
   
   raceChart = calculateChart(delays, stats[0], TOP_TRAINS);
