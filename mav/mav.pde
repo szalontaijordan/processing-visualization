@@ -89,12 +89,55 @@ void draw(){
   if (!wireframe) {
     if (showingHu) {
       drawFullHungary();
+      drawLegend();
     } else {
       drawRaceChart();
     }
   } else {
     drawLinePointsOnly();
   }
+}
+
+void drawLegend() {
+  stroke(#232323);
+  strokeWeight(1);
+  fill(#ffffff, 128);
+  rect(10, 10, 144, 216);
+  
+  color from = #00ff00;
+  color to = #ff0000;
+  
+  fill(#000000, 255);
+  text("Relatív vonal késés", 16, 32);
+  text("0%", 16, 72);
+  text("100%", 116, 72);
+  for (int i = 1; i <= 100; i++) {
+    fill(lerpColor(from, to, 1.0*i / 100), 255);
+    noStroke();
+    rect(16 + i, 40, 1, 16);
+  }
+  
+  fill(#000000, 255);
+  text("Abszolút késés", 16, 92);
+  
+  String[] labels = new String[]{
+    "0",
+    "1 - 4",
+    "5 - 14",
+    "15 - 29",
+    "30 - 59",
+    "60 - 99",
+    "100 - "
+  };
+  int[] labelDelays = new int[]{0, 2, 10, 16, 31, 61, 100};
+  for (int i = 0; i < labels.length; i++) {
+    fill(#000000, 255);
+    text(labels[i], 40, 116 + i*16);
+    fill(getFillForDelay(labelDelays[i]));
+    strokeWeight(1);
+    stroke(#000000);
+    circle(24, 110+i*16, 8);
+  } 
 }
 
 void drawLinePointsOnly() {
@@ -191,7 +234,19 @@ void drawTrains() {
       stroke(#000000);
       strokeWeight(1);
       getFillForDelay(train);
-      circle(vec.x, vec.y, 10);
+      
+      circle(vec.x, vec.y, 10);    
+    }
+  });
+  trainsXY.entrySet().stream().forEach(me -> {
+    if (me.getKey() < trains.size()) {
+      Train train = trains.get(me.getKey());
+      PVector vec = me.getValue();
+      
+      if (vec.dist(new PVector(mouseX, mouseY)) < 10) {
+        fill(#000000);
+        drawInfoBox(train);
+      }
     }
   });
 }
@@ -214,11 +269,6 @@ void calcTrains() {
 
     float x = (train.getLon() - minLon) * scaleW + trainDeltaX;
     float y = h - ((train.getLat() - minLat) * scaleH) + trainDeltaY;
-    
-    if (dist(x, y, mouseX, mouseY) < 10) {
-      fill(#000000);
-      drawInfoBox(train);
-    }
     
     trainsXY.put(i, new PVector(x, y));
   };
@@ -388,7 +438,7 @@ void drawTrainLine(PShape trainLine) {
     PVector last = vertices.get(i);
     
     float strokeSize = 1.0;
-    float mult = map(getCloseTrains(first, 20).size(), 0, 10, 1, 2);
+    float mult = map(getCloseTrains(first, 30).size(), 0, 10, 1, 2);
 
     if (hasCloseTrain(first, 10) && hasCloseTrain(last, 10)) {
       strokeWeight(14 * mult);
