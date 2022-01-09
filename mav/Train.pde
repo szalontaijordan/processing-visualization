@@ -14,6 +14,7 @@ class Train {
   private final float lon;
   private final String line;
   private final String relation;
+  private final String time;
   
   public Train(TableRow row) {
     this.delay = row.getInt("delay");
@@ -21,6 +22,7 @@ class Train {
     this.lon = row.getFloat("lon");
     this.line = row.getString("line");
     this.relation = row.getString("relation");
+    this.time = "";
   }
   
   public Train(JSONObject obj) {
@@ -29,6 +31,7 @@ class Train {
     this.lon = obj.getFloat("lon");
     this.line = obj.getString("line");
     this.relation = obj.getString("relation");
+    this.time = obj.getString("at").substring(11, 19);
   }
   
   public float getLat() {
@@ -55,6 +58,10 @@ class Train {
     }
     
     return info;
+  }
+  
+  public String getShortInfo() {
+    return "[" + this.time + "] " + this.relation + " (" + this.delay + ")";
   }
   
   @Override

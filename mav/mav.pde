@@ -1,5 +1,6 @@
 import java.util.*;
 import java.util.stream.IntStream;
+import java.util.stream.Collectors;
 import java.util.function.UnaryOperator;
 import java.util.function.Consumer;
 import java.util.function.BiConsumer;
@@ -275,6 +276,63 @@ void drawPerformance() {
       List<Train> sequence = sequences.get(i);
       drawArrows.accept(sequence, i);
     }
+    
+    List<Map<Train, Integer>> hovered = hovering.entrySet().stream()
+      .filter(me -> me.getValue())
+      .map(me -> {
+        List<Train> sequence = sequences.get(me.getKey());
+        Map<Integer, PVector> xy = calcTrains(sequence);
+        int min = 0;
+        
+        PVector mouse = new PVector(mouseX, mouseY);
+        for (int i  = 1; i < sequence.size(); i++) {
+          if (xy.get(i).dist(mouse) < xy.get(min).dist(mouse)) {
+            min = i;
+          }
+        }
+        Train closestTrain = sequence.get(min);
+        return Map.of(closestTrain, me.getKey());
+      })
+      .collect(Collectors.toList());
+    
+    float h = hovered.size() * 30;
+    float w = 300;
+    
+    float rectX = mouseX - w - 8;
+    float rectY = mouseY - h - 8;
+    if (hovered.size() > 0) {
+      fill(#ffffff, 150);
+      rect(rectX, rectY, w, h);
+    }
+    
+    List<PVector> indicators = new ArrayList<>();
+    
+    for (int i = 0; i < hovered.size(); i++) {
+      Map.Entry<Train, Integer> me = new ArrayList<>(hovered.get(i).entrySet()).get(0);
+      Integer I = me.getValue();
+      Train train = me.getKey();
+      
+      fill(#000000);
+      textSize(14);
+      text(train.getShortInfo(), rectX + 8, rectY + 16 + 24 * i);
+      
+      Map<Integer, PVector> hoveredXY = calcTrains(List.of(train));
+      PVector vec = hoveredXY.get(0);
+      circle(vec.x + delta.get(I), vec.y + delta.get(I)*2, 4);
+      indicators.add(new PVector(
+        vec.x + delta.get(I),
+        vec.y + delta.get(I)*2
+      ));
+    };
+      
+    for (int i = 0; i < indicators.size() - 1; i++) {
+      PVector a = indicators.get(i);
+      PVector b = indicators.get(i + 1);
+      strokeWeight(1);
+      stroke(#aaaaaa);
+      line(a.x, a.y, b.x, b.y);
+    }  
+      
   };
   
   String theBest = "legjobb";
