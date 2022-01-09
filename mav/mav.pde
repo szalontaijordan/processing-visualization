@@ -1,6 +1,8 @@
 import java.util.*;
 import java.util.stream.IntStream;
 import java.util.function.UnaryOperator;
+import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import java.time.LocalDate;
 import java.text.SimpleDateFormat;
 
@@ -18,6 +20,8 @@ Map<String, Float> delays;
 List<ChartData> raceChart;
 Map<String, Integer> counts;
 Map<Integer, PVector> trainsXY;
+
+Map<String, List<List<Train>>> report;
 
 List<List<ChartData>> history;
 int showing = 0;
@@ -47,6 +51,7 @@ void setup() {
   
   loader = new DataLoader();
   requestData();
+  report = loader.loadPerformance();
 } 
 
 float zoom = 0.0;
@@ -75,7 +80,6 @@ int TOP_TRAINS = 15;
 float sliderx;
 float slidery;
 
-boolean showingHu = true;
 
 void draw(){
   background(#ffffff);
@@ -87,14 +91,35 @@ void draw(){
   }
   
   if (!wireframe) {
-    if (showingHu) {
+    if (scene == 1) {
+      // drawLegend();
       drawFullHungary();
-      drawLegend();
-    } else {
+    } else if (scene == 2) {
       drawRaceChart();
+    } else if (scene == 3) {
+      drawPerformance();
     }
+    drawSceneBoxes();
   } else {
     drawLinePointsOnly();
+  }
+}
+
+void drawSceneBoxes() {
+  textSize(24);
+  for (int i = 1; i <= 3; i++) {
+    if (i == scene) {
+      fill(#000000);
+    } else {
+      noFill();
+    }
+    rect(1000 + (i-1)*40, 660, 40, 40);
+    if (i == scene) {
+      fill(#ffffff);
+    } else {
+      fill(#000000);
+    }
+    text(i, 1000 + (i-1)*40 + 16, 690);
   }
 }
 
@@ -156,6 +181,168 @@ void drawLinePointsOnly() {
     });
 }
 
+void drawPerformance() {
+  PShape map = hu.getChild("alapterkep");
+  drawHungary(map);
+  
+  final Map<Integer, Float> delta = new HashMap<>();
+  final Map<Integer, Boolean> drawn = new HashMap<>();
+  final Map<Integer, Boolean> hovering = new HashMap<>();
+  
+  BiConsumer<List<List<Train>>, Integer> show = (List<List<Train>> sequences, Integer I) -> {
+    List<Train> sequence = sequences.get(I);
+    Map<Integer, PVector> xy = calcTrains(sequence);
+    List<PVector> vertices = new ArrayList<>(xy.values());
+    
+    int matches = 0;
+    
+    for (int i = 0; i < sequences.size(); i++) {
+      if (drawn.get(i) == null || i == I) {
+        continue;
+      }
+      Map<Integer, PVector> Bxy = calcTrains(sequences.get(i));
+      List<PVector> bVertices = new ArrayList<>(Bxy.values());
+      
+      int commonPoints = 0;
+      for (PVector a: vertices) {
+        for (PVector b: bVertices) {
+          if (a.dist(b) < 0.2) {
+            commonPoints++;
+          }
+        }
+      }
+      if (commonPoints > 10) {
+        println(commonPoints);
+        matches++;
+      }
+    }
+    
+    // matches = 0;
+    delta.put(I, matches * 12.0);
+    
+    vertices.stream().filter(vec -> vec.dist(new PVector(mouseX, mouseY)) < 12).forEach(vec -> hovering.put(I, true));
+    
+    for (int i = 0; i < vertices.size() - 1; i++) {
+      PVector a = vertices.get(i);
+      PVector b = vertices.get(i + 1);
+      
+      strokeWeight(12);
+      stroke(getFillForDelay(sequence.get(i).getDelay()), 100);
+      
+      float d = hovering.get(I) == null ? 0 : delta.get(I);
+      line(a.x + d, a.y + d*2, b.x + d, b.y + d*2);
+    }
+    drawn.put(I, true);
+  };
+  
+  BiConsumer<List<Train>, Integer> drawArrows = (List<Train> sequence, Integer I) -> {
+    Map<Integer, PVector> xy = calcTrains(sequence);
+    List<PVector> vertices = new ArrayList<>(xy.values());
+    if (hovering.get(I) != null) {
+      vertices.stream().forEach(vec -> vec.set(vec.x + delta.get(I), vec.y + delta.get(I) * 2));
+    }
+    
+    float arrowD = 24.0;
+    PVector prevHead = vertices.get(0);
+    PVector prevTail = null;
+    
+    fill(#000000);
+    circle(vertices.get(0).x, vertices.get(0).y, 8);
+    
+    for (int i = 1; i < vertices.size(); i++) {
+      if (prevHead.dist(vertices.get(i)) >= arrowD) {
+        drawArrow(prevHead, vertices.get(i));
+        prevTail = new PVector(prevHead.x, prevHead.y);
+        prevHead = vertices.get(i);
+      }
+    }
+    drawArrow(prevTail, vertices.get(vertices.size() - 1));
+    drawArrowEnd(prevTail, vertices.get(vertices.size() - 1));
+    
+    for (int i = 0; i < vertices.size() - 1; i++) {
+      PVector a = vertices.get(i);
+      PVector b = vertices.get(i + 1);
+      line(a.x, a.y, b.x, b.y);
+    }
+  };
+  
+  Consumer<String> drawPerformance = (String k) -> {
+    List<List<Train>> sequences = report.get(k);
+    for (int i = 0; i < sequences.size(); i++) {
+      show.accept(sequences, i);
+    }
+    for (int i = 0; i < sequences.size(); i++) {
+      List<Train> sequence = sequences.get(i);
+      drawArrows.accept(sequence, i);
+    }
+  };
+  
+  String theBest = "legjobb";
+  String theWorst = "legrosszabb";
+  String title;
+  
+  if (best) {
+    title = theBest;
+    drawPerformance.accept("best");
+  } else {
+    title = theWorst;
+    drawPerformance.accept("worst");
+  }
+  
+  textSize(24);
+  text("2022. január 4-én a " + title + "ban teljesítő 15 vonat", 24, 48);
+  textSize(20);
+  text("Váltás a " + (title.equals(theBest) ? theWorst : theBest) +"ra: \"ó\"", 24, 80);
+}
+
+void drawArrowEnd(PVector a, PVector b) {
+  pushMatrix();
+  
+  strokeWeight(1);
+  
+  stroke(35, 35, 35, 255);
+  
+  translate(b.x, b.y); //set relative 0,0 coor
+  rotate(new PVector(b.x - a.x, b.y - a.y).heading());
+  
+  float r = 16.0;
+  float fi = PI / 2.0;
+  float x = r * cos(fi);
+  float y = r * sin(fi);
+  line(0, 0, x, y); //draw line from relative 0,0 to arrow head
+  fi = PI * 1.5;
+  x = r * cos(fi);
+  y = r * sin(fi);
+  line(0, 0, x, y); //draw line from relative 0,0 to arrow head
+  
+  popMatrix();
+}
+
+void drawArrow(PVector a, PVector b){
+  pushMatrix();
+  
+  strokeWeight(1);
+  
+  stroke(35, 35, 35, 255);
+  
+  translate(b.x, b.y); //set relative 0,0 coor
+  rotate(new PVector(b.x - a.x, b.y - a.y).heading());
+  
+  float r = 10.0;
+  float fi = PI * 3.0 / 4.0;
+  float x = r * cos(fi);
+  float y = r * sin(fi);
+  line(0, 0, x, y); //draw line from relative 0,0 to arrow head
+  fi = PI * 5.0 / 4.0;
+  x = r * cos(fi);
+  y = r * sin(fi);
+  line(0, 0, x, y); //draw line from relative 0,0 to arrow head
+  
+  popMatrix();
+}
+
+boolean best = true;
+
 void drawFullHungary() {
   PShape map = hu.getChild("alapterkep");
 
@@ -174,6 +361,7 @@ void drawFullHungary() {
 void drawRaceChart() {
   // draw chart
   // fix delays
+  textSize(16);
   strokeWeight(1);
   List<Integer> fixDelays = List.of(0, 15, 30, 60, 90);
   fixDelays.stream().forEach(d -> {
@@ -251,8 +439,8 @@ void drawTrains() {
   });
 }
 
-void calcTrains() {
-  trainsXY = new HashMap<>();
+Map<Integer, PVector> calcTrains(List<Train> trains) {
+  Map<Integer, PVector> trainsXY = new HashMap<>();
   float h = 2059 * (1.0 + strechY) * (0.3 + zoom);
   float w = 3116 * (1.0 + strechX) * (0.3 + zoom);
 
@@ -261,8 +449,8 @@ void calcTrains() {
   
   for (int i = 0; i < trains.size(); i++) {
     Train train = trains.get(i); 
-    strokeWeight(1);
-    stroke(#232323);
+    // strokeWeight(1);
+    // stroke(#232323);
 
     float trainDeltaX = trainsX * (1.0 + strechX) * (0.3 + zoom);
     float trainDeltaY = trainsY * (1.0 + strechY) * (0.3 + zoom);
@@ -272,6 +460,11 @@ void calcTrains() {
     
     trainsXY.put(i, new PVector(x, y));
   };
+  return trainsXY;
+}
+
+void calcTrains() {
+  trainsXY = calcTrains(trains);
 }
 
 void drawInfoBox(Train train) {
@@ -307,6 +500,7 @@ void drawHungary(PShape map) {
           strokeWeight(2);
           stroke(#000000);
         } else {
+          strokeWeight(1);
           stroke(color(128, 128, 128));          
         }
         noFill();
@@ -538,15 +732,6 @@ void translateIfNeeded(PShape trainLine) {
     translate(xx + DX, yy + DY);
   }
 }
-/*
-boolean isMouseOnLineBetween(PVector A, PVector B) {
-  PVector mouse = new PVector(mouseX, mouseY);
-  PVector V = B.sub(A);
-  PVector N = new PVector(V.y, -1* V.x);
-  float C = N.dot(A);
-  return mouse.dot(N) - C == 0;
-}
-*/
 
 float getStrokeSize(int i, int count, int parts, float baseStrokeSize) {
   float strokeSize = baseStrokeSize;
@@ -588,9 +773,22 @@ void mouseWheel(MouseEvent event) {
 int L = 1000;
 
 boolean shouldDrawTrains = true;
+int scene = 3;
 
 void keyPressed() {
   float delta = 0.001;
+  
+  if (key == 'ó') {
+    best = !best;
+  }
+  
+  if (key == '1') {
+    scene = 1;    
+  } else if (key == '2') {
+    scene = 2;
+  } else if (key == '3') {
+    scene = 3;
+  }
   
   if (key == 'y') {
     autoFollow = false;
@@ -631,7 +829,7 @@ void keyPressed() {
   } else if (key == 's') {
     strechY -= delta;
   } else if (key == ' ') {
-    showingHu = !showingHu;
+    scene = 2;
     println(mapX);
     println(mapY);
     println(strechX);
@@ -658,7 +856,12 @@ void requestData() {
   calcTrains();
   Map[] stats = getStats();
   
-  raceChart = calculateChart(delays, stats[0], TOP_TRAINS);
+  try {
+    raceChart = calculateChart(delays, stats[0], TOP_TRAINS);
+  } catch (Exception e) {
+    println(e.getMessage());
+  }
+  
   history.add(raceChart);
   showing++;
   if (autoFollow) {
@@ -686,7 +889,7 @@ void requestData() {
   trains.stream().forEach(train -> mainLines.add("vv_" + train.getLine()));
 }
 
-List<ChartData> calculateChart(Map<String, Float> prev, Map<String, Float> current, int top) {
+List<ChartData> calculateChart(Map<String, Float> prev, Map<String, Float> current, int top) throws Exception {
   final float maxDelay = getMaxDelay();
   
   List<Map.Entry<String, Float>> empty = new ArrayList(current.size());
@@ -703,11 +906,11 @@ List<ChartData> calculateChart(Map<String, Float> prev, Map<String, Float> curre
   
   List<ChartData> data = new ArrayList<>();
   
-  for (int i = 0; i < Math.min(current.size(), top); i++) {
+  for (int i = 0; i < Math.min(current.size(), top); i++) { //<>//
     Map.Entry<String, Float> c = currentSorted.get(i);
 
     int prevIndex = -1;
-    for (int j = 0; j < top; j++) {
+    for (int j = 0; j < Math.min(current.size(), top); j++) {
       if (prevSorted.get(j) != null && prevSorted.get(j).getKey().equals(c.getKey())) {
         prevIndex = j;
       }

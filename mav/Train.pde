@@ -23,6 +23,14 @@ class Train {
     this.relation = row.getString("relation");
   }
   
+  public Train(JSONObject obj) {
+    this.delay = obj.getInt("delay");
+    this.lat = obj.getFloat("lat");
+    this.lon = obj.getFloat("lon");
+    this.line = obj.getString("line");
+    this.relation = obj.getString("relation");
+  }
+  
   public float getLat() {
     return this.lat;
   }
