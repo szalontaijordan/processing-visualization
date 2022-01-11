@@ -93,12 +93,14 @@ void draw(){
   
   if (!wireframe) {
     if (scene == 1) {
-      // drawLegend();
+      textSize(14);
+      drawLegend();
       drawFullHungary();
     } else if (scene == 2) {
       drawRaceChart();
     } else if (scene == 3) {
       drawPerformance();
+      drawLegendForPerformance();
     }
     drawSceneBoxes();
   } else {
@@ -122,6 +124,37 @@ void drawSceneBoxes() {
     }
     text(i, 1000 + (i-1)*40 + 16, 690);
   }
+}
+
+void drawLegendForPerformance() {
+  stroke(#232323);
+  strokeWeight(1);
+  fill(#ffffff, 128);
+  rect(1000, 464, 120, 180);
+  
+  fill(#000000, 255);
+  textSize(14);
+  text("Késés (perc)", 1008, 480);
+  
+  String[] labels = new String[]{
+    "0",
+    "1 - 4",
+    "5 - 14",
+    "15 - 29",
+    "30 - 59",
+    "60 - 99",
+    "100 - "
+  };
+  int[] labelDelays = new int[]{0, 2, 10, 16, 31, 61, 100};
+  for (int i = 0; i < labels.length; i++) {
+    fill(#000000, 255);
+    text(labels[i], 1032, 510 + i*16);
+    fill(getFillForDelay(labelDelays[i]));
+    strokeWeight(1);
+    stroke(#000000);
+    circle(1016, 506+i*16, 8);
+  }
+  
 }
 
 void drawLegend() {
